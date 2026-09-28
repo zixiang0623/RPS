@@ -20,6 +20,13 @@ h1{margin:0;font-size:1.6rem}
 .go{background:var(--acc);color:#222;border:0;border-radius:99px;padding:12px 28px;font-size:1rem;font-weight:700;cursor:pointer}
 .shake{animation:sh .18s 4}@keyframes sh{50%{transform:translateY(-10px)}}
 .win{color:#5dffa0}.lose{color:#ff7a7a}
+.chat{width:100%;display:flex;flex-direction:column;gap:8px}.chat[hidden]{display:none}
+.log{height:84px;overflow-y:auto;background:#12162b;border-radius:10px;padding:6px 10px;text-align:left;font-size:.85rem}
+.log .me{color:var(--acc)}.log .them{color:#9fd0ff}
+.presets{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.presets button{background:#262c4d;color:var(--fg);border:0;border-radius:99px;padding:6px 12px;font-size:.8rem;cursor:pointer}
+.free{display:flex;gap:6px}.free input{flex:1;background:#12162b;color:var(--fg);border:1px solid #303760;border-radius:10px;padding:8px;font-size:.9rem}
+.free button{background:var(--acc);border:0;border-radius:10px;padding:0 14px;font-weight:700;cursor:pointer}
 </style>
 </head>
 <body>
@@ -31,6 +38,11 @@ h1{margin:0;font-size:1.6rem}
   <div class="msg" id="msg">「対戦相手を探す」を押してください</div>
   <div class="hands" id="hands">
     <button data-m="r" disabled>✊</button><button data-m="s" disabled>✌️</button><button data-m="p" disabled>✋</button>
+  </div>
+  <div class="chat" id="chat" hidden>
+    <div class="log" id="log"></div>
+    <div class="presets" id="presets"></div>
+    <div class="free"><input id="ci" maxlength="40" placeholder="自由に一言（40字まで）"><button id="cs">送信</button></div>
   </div>
   <button class="go" id="go">対戦相手を探す</button>
 </div>
@@ -50,14 +62,15 @@ function connect(){
 }
 function on(m){
   if(m.type==="stats")$("stats").textContent=`🌍 いま ${m.online} 人がオンライン ・ 累計 ${m.total} 回`;
-  else if(m.type==="waiting"){$("msg").textContent="世界のだれかを探しています…";$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true}
-  else if(m.type==="matched"){$("opp").innerHTML=`${m.ghost?"👻 ゴースト（過去の誰かの手）":"対戦相手"}<b>${flag(m.country)}</b>`;$("big").textContent="";$("msg").textContent="手を選んでください";setHands(true)}
+  else if(m.type==="waiting"){$("msg").textContent=`待機列 ${m.pos}番目（待機 ${m.size}人）`;$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true;showChat(false)}
+  else if(m.type==="matched"){$("opp").innerHTML=`${m.ghost?"👻 ゴースト（過去の誰かの手）":"対戦相手"}<b>${flag(m.country)}</b>`;$("big").textContent="";$("msg").textContent="手を選んでください";setHands(true);showChat(!m.ghost)}
   else if(m.type==="locked")$("msg").textContent="相手の手を待っています…";
-  else if(m.type==="left"){$("msg").textContent="相手が退出しました";setHands(false);$("go").hidden=false;$("go").textContent="次の相手を探す"}
+  else if(m.type==="left"){$("msg").textContent="相手が退出しました";setHands(false);showChat(false);$("go").hidden=false;$("go").textContent="次の相手を探す"}
+  else if(m.type==="chat")addLog(m);
   else if(m.type==="result")reveal(m);
 }
 function reveal(m){
-  setHands(false);$("msg").textContent="じゃん…けん…";$("big").textContent="✊";$("big").className="big shake";
+  setHands(false);showChat(false);$("msg").textContent="じゃん…けん…";$("big").textContent="✊";$("big").className="big shake";
   setTimeout(()=>{
     $("big").className="big";$("big").textContent=`${E[m.you]} vs ${E[m.opp]}`;
     const t={win:"勝ち！",lose:"負け…",draw:"あいこ"}[m.outcome];
@@ -66,6 +79,13 @@ function reveal(m){
     $("go").hidden=false;$("go").textContent="次の相手を探す";
   },800);
 }
+const PRE=["次はグーを出すよ✊","パーは出さない😏","さっきと同じ手にする","緊張してる？","勝ったな…","運命を信じろ"];
+function showChat(on){$("chat").hidden=!on;if(on)$("log").textContent=""}
+function addLog(m){const d=document.createElement("div");d.className=m.mine?"me":"them";d.textContent=(m.mine?"あなた: ":"相手: ")+m.text;const l=$("log");l.appendChild(d);while(l.children.length>30)l.firstChild.remove();l.scrollTop=l.scrollHeight}
+function sendChat(t){t=t.trim();if(t&&ws.readyState===1)ws.send(JSON.stringify({type:"chat",text:t}))}
+PRE.forEach(t=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>sendChat(t);$("presets").appendChild(b)});
+$("cs").onclick=()=>{sendChat($("ci").value);$("ci").value=""};
+$("ci").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){sendChat($("ci").value);$("ci").value=""}};
 hands.forEach(b=>b.onclick=()=>{ws.send(JSON.stringify({type:"move",move:b.dataset.m}));setHands(false);$("msg").textContent="送信しました…"});
 $("go").onclick=()=>ws.send(JSON.stringify({type:"join"}));
 $("go").disabled=true;connect();
