@@ -27,11 +27,13 @@ h1{margin:0;font-size:1.6rem}
 .presets button{background:#262c4d;color:var(--fg);border:0;border-radius:99px;padding:6px 12px;font-size:.8rem;cursor:pointer}
 .free{display:flex;gap:6px}.free input{flex:1;background:#12162b;color:var(--fg);border:1px solid #303760;border-radius:10px;padding:8px;font-size:.9rem}
 .free button{background:var(--acc);border:0;border-radius:10px;padding:0 14px;font-weight:700;cursor:pointer}
+.lb{background:#12162b;color:var(--fg);border:1px solid #303760;border-radius:10px;padding:6px 10px;font-size:.85rem}
 </style>
 </head>
 <body>
 <h1>✊✋✌️ 世界じゃんけん</h1>
 <div class="stats" id="stats">接続中…</div>
+<select class="lb" id="lb"></select>
 <div class="stage">
   <div class="opp" id="opp"></div>
   <div class="big" id="big"></div>
@@ -52,16 +54,21 @@ const E={r:"✊",s:"✌️",p:"✋"};
 const $=id=>document.getElementById(id);
 const flag=c=>/^[A-Z]{2}$/.test(c)&&c!=="XX"&&c!=="T1"?String.fromCodePoint(...[...c].map(x=>127397+x.charCodeAt())):"🌐";
 const sc={win:0,lose:0,draw:0};
+const REG={AS:["アジア",2],EU:["ヨーロッパ",2],NA:["北米",2],SA:["南米",1],OC:["オセアニア",1],AF:["アフリカ",1]};
+const lbName=id=>{const [r,n]=(id||"").split("-");return REG[r]?REG[r][0]+(REG[r][1]>1?` 第${n}`:"")+"ロビー":"ロビー"};
+let LB="";
+$("lb").innerHTML='<option value="">自動（近くのロビー）</option>'+Object.entries(REG).flatMap(([r,[n,c]])=>Array.from({length:c},(_,i)=>`<option value="${r}-${i+1}">${lbName(r+"-"+(i+1))}</option>`)).join("");
+$("lb").onchange=()=>{LB=$("lb").value;ws.onclose=null;ws.close();showChat(false);setHands(false);$("big").textContent="";$("opp").textContent="";$("msg").textContent="「対戦相手を探す」を押してください";$("go").hidden=false;$("go").textContent="対戦相手を探す";$("go").disabled=true;connect()};
 let ws,hands=[...document.querySelectorAll(".hands button")];
 const setHands=on=>hands.forEach(b=>b.disabled=!on);
 function connect(){
-  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws"+(LB?"?lobby="+LB:""));
   ws.onopen=()=>{$("go").disabled=false};
   ws.onclose=()=>{$("stats").textContent="切断されました。再接続中…";$("go").disabled=true;setHands(false);setTimeout(connect,2000)};
   ws.onmessage=e=>on(JSON.parse(e.data));
 }
 function on(m){
-  if(m.type==="stats")$("stats").textContent=`🌍 いま ${m.online} 人がオンライン ・ 累計 ${m.total} 回`;
+  if(m.type==="stats")$("stats").textContent=`🌍 ${lbName(m.lobby)} ・ いま ${m.online} 人 ・ 累計 ${m.total} 回`;
   else if(m.type==="waiting"){$("msg").textContent="世界のだれかを探しています…";$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true;showChat(false)}
   else if(m.type==="matched"){$("opp").innerHTML=`${m.ghost?"👻 ゴースト（過去の誰かの手）":"対戦相手"}<b>${flag(m.country)}</b>`;$("big").textContent="";$("msg").textContent="手を選んでください";setHands(true);showChat(!m.ghost)}
   else if(m.type==="locked")$("msg").textContent="相手の手を待っています…";

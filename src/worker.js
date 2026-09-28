@@ -6,19 +6,43 @@ const GHOST_WAIT_MS = 6000;
 const CHAT_MAX = 40;
 const CHAT_GAP_MS = 1000;
 
+// 地域(大陸)ごとのロビー数。大きい地域は2つ、第1ロビーが満員になったら第2へ
+const LOBBIES = { AS: 2, EU: 2, NA: 2, SA: 1, OC: 1, AF: 1 };
+const CAP = 200;
+const CONTINENT = { AN: "OC" };
+const FALLBACK = "AS"; // 判定できない時（ローカル開発など）
+
+async function pickLobby(req, env, url) {
+  const want = url.searchParams.get("lobby") || "";
+  const m = /^([A-Z]{2})-([1-9])$/.exec(want);
+  if (m && Object.hasOwn(LOBBIES, m[1]) && +m[2] <= LOBBIES[m[1]]) return want;
+  let r = req.cf?.continent;
+  r = CONTINENT[r] || r;
+  if (!Object.hasOwn(LOBBIES, r || "")) r = FALLBACK;
+  if (LOBBIES[r] > 1) {
+    const c = await env.LOBBY.get(env.LOBBY.idFromName(r + "-1")).fetch("https://lobby/count")
+      .then((x) => x.json()).catch(() => ({ online: 0 }));
+    if (c.online >= CAP) return r + "-2";
+  }
+  return r + "-1";
+}
+
 export class Lobby {
   constructor(state) {
     this.state = state;
     this.players = new Set();
+    this.name = "";
     this.waiting = null;
     this.total = null;
     this.hist = []; // 直近の人間の手 {move, country}（ゴースト用）
   }
 
   async fetch(req) {
+    if (new URL(req.url).pathname === "/count") return Response.json({ online: this.players.size });
     if (req.headers.get("Upgrade") !== "websocket") return new Response("ws only", { status: 426 });
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
+    this.name = req.headers.get("x-lobby") || this.name;
     const p = { ws: server, country: req.headers.get("x-country") || "XX", opp: null, ghost: null, move: null, timer: null, lastChat: 0 };
     this.players.add(p);
     if (this.total === null) this.total = (await this.state.storage.get("total")) || 0;
@@ -31,7 +55,7 @@ export class Lobby {
   }
 
   send(p, obj) { try { p.ws.send(JSON.stringify(obj)); } catch {} }
-  stats() { for (const p of this.players) this.send(p, { type: "stats", online: this.players.size, total: this.total }); }
+  stats() { for (const p of this.players) this.send(p, { type: "stats", lobby: this.name, online: this.players.size, total: this.total }); }
 
   unpair(p) {
     clearTimeout(p.timer);
@@ -103,9 +127,11 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
+      const lobby = await pickLobby(req, env, url);
       const h = new Headers(req.headers);
       h.set("x-country", req.cf?.country || "XX");
-      return env.LOBBY.get(env.LOBBY.idFromName("global")).fetch(new Request(req, { headers: h }));
+      h.set("x-lobby", lobby);
+      return env.LOBBY.get(env.LOBBY.idFromName(lobby)).fetch(new Request(req, { headers: h }));
     }
     return env.ASSETS.fetch(req);
   },
