@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>世界じゃんけん</title>
+<style>
+:root{--bg:#0f1220;--fg:#f2f4ff;--sub:#8b92b8;--card:#1a1f38;--acc:#ffcc4d}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font-family:system-ui,"Hiragino Sans",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:20px;text-align:center}
+h1{margin:0;font-size:1.6rem}
+.stats{color:var(--sub);font-size:.85rem}
+.stage{background:var(--card);border-radius:20px;padding:24px;width:100%;max-width:420px;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.opp{font-size:1rem;color:var(--sub)}.opp b{font-size:2rem;display:block}
+.hands{display:flex;gap:14px}
+.hands button{font-size:2.6rem;width:88px;height:88px;border-radius:50%;border:0;background:#262c4d;cursor:pointer}
+.hands button:disabled{opacity:.35;cursor:default}
+.hands button:not(:disabled):active{transform:scale(.92)}
+.big{font-size:3.2rem}.msg{font-size:1.2rem}
+.go{background:var(--acc);color:#222;border:0;border-radius:99px;padding:12px 28px;font-size:1rem;font-weight:700;cursor:pointer}
+.shake{animation:sh .18s 4}@keyframes sh{50%{transform:translateY(-10px)}}
+.win{color:#5dffa0}.lose{color:#ff7a7a}
+</style>
+</head>
+<body>
+<h1>✊✋✌️ 世界じゃんけん</h1>
+<div class="stats" id="stats">接続中…</div>
+<div class="stage">
+  <div class="opp" id="opp"></div>
+  <div class="big" id="big"></div>
+  <div class="msg" id="msg">「対戦相手を探す」を押してください</div>
+  <div class="hands" id="hands">
+    <button data-m="r" disabled>✊</button><button data-m="s" disabled>✌️</button><button data-m="p" disabled>✋</button>
+  </div>
+  <button class="go" id="go">対戦相手を探す</button>
+</div>
+<div class="stats" id="score">0勝 0敗 0分</div>
+<script>
+const E={r:"✊",s:"✌️",p:"✋"};
+const $=id=>document.getElementById(id);
+const flag=c=>/^[A-Z]{2}$/.test(c)&&c!=="XX"&&c!=="T1"?String.fromCodePoint(...[...c].map(x=>127397+x.charCodeAt())):"🌐";
+const sc={win:0,lose:0,draw:0};
+let ws,hands=[...document.querySelectorAll(".hands button")];
+const setHands=on=>hands.forEach(b=>b.disabled=!on);
+function connect(){
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  ws.onopen=()=>{$("go").disabled=false};
+  ws.onclose=()=>{$("stats").textContent="切断されました。再接続中…";$("go").disabled=true;setHands(false);setTimeout(connect,2000)};
+  ws.onmessage=e=>on(JSON.parse(e.data));
+}
+function on(m){
+  if(m.type==="stats")$("stats").textContent=`🌍 いま ${m.online} 人がオンライン ・ 累計 ${m.total} 回`;
+  else if(m.type==="waiting"){$("msg").textContent="世界のだれかを探しています…";$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true}
+  else if(m.type==="matched"){$("opp").innerHTML=`${m.ghost?"👻 ゴースト（過去の誰かの手）":"対戦相手"}<b>${flag(m.country)}</b>`;$("big").textContent="";$("msg").textContent="手を選んでください";setHands(true)}
+  else if(m.type==="locked")$("msg").textContent="相手の手を待っています…";
+  else if(m.type==="left"){$("msg").textContent="相手が退出しました";setHands(false);$("go").hidden=false;$("go").textContent="次の相手を探す"}
+  else if(m.type==="result")reveal(m);
+}
+function reveal(m){
+  setHands(false);$("msg").textContent="じゃん…けん…";$("big").textContent="✊";$("big").className="big shake";
+  setTimeout(()=>{
+    $("big").className="big";$("big").textContent=`${E[m.you]} vs ${E[m.opp]}`;
+    const t={win:"勝ち！",lose:"負け…",draw:"あいこ"}[m.outcome];
+    $("msg").innerHTML=`<span class="${m.outcome}">${t}</span>`;
+    sc[m.outcome]++;$("score").textContent=`${sc.win}勝 ${sc.lose}敗 ${sc.draw}分`;
+    $("go").hidden=false;$("go").textContent="次の相手を探す";
+  },800);
+}
+hands.forEach(b=>b.onclick=()=>{ws.send(JSON.stringify({type:"move",move:b.dataset.m}));setHands(false);$("msg").textContent="送信しました…"});
+$("go").onclick=()=>ws.send(JSON.stringify({type:"join"}));
+$("go").disabled=true;connect();
+</script>
+</body>
+</html>
