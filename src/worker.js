@@ -1,4 +1,4 @@
-// 世界じゃんけん: 待機列マッチング + 同時公開 + チャット + ゴースト対戦
+// 世界じゃんけん: マッチング + 同時公開 + チャット + ゴースト対戦
 const BEATS = { r: "s", s: "p", p: "r" };
 const judge = (a, b) => (a === b ? "draw" : BEATS[a] === b ? "win" : "lose");
 const MOVES = ["r", "p", "s"];
@@ -10,7 +10,7 @@ export class Lobby {
   constructor(state) {
     this.state = state;
     this.players = new Set();
-    this.queue = []; // 待機列（先頭が最古）
+    this.waiting = null;
     this.total = null;
     this.hist = []; // 直近の人間の手 {move, country}（ゴースト用）
   }
@@ -19,7 +19,7 @@ export class Lobby {
     if (req.headers.get("Upgrade") !== "websocket") return new Response("ws only", { status: 426 });
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
-    const p = { ws: server, country: req.headers.get("x-country") || "XX", opp: null, ghost: null, move: null, timer: null, last: null, lastChat: 0 };
+    const p = { ws: server, country: req.headers.get("x-country") || "XX", opp: null, ghost: null, move: null, timer: null, lastChat: 0 };
     this.players.add(p);
     if (this.total === null) this.total = (await this.state.storage.get("total")) || 0;
     this.stats();
@@ -32,13 +32,11 @@ export class Lobby {
 
   send(p, obj) { try { p.ws.send(JSON.stringify(obj)); } catch {} }
   stats() { for (const p of this.players) this.send(p, { type: "stats", online: this.players.size, total: this.total }); }
-  sendQueue() { this.queue.forEach((q, i) => this.send(q, { type: "waiting", pos: i + 1, size: this.queue.length })); }
 
   unpair(p) {
     clearTimeout(p.timer);
     if (p.opp) { this.send(p.opp, { type: "left" }); p.opp.opp = null; p.opp.move = null; }
-    const k = this.queue.indexOf(p);
-    if (k >= 0) { this.queue.splice(k, 1); this.sendQueue(); }
+    if (this.waiting === p) this.waiting = null;
     p.opp = null; p.ghost = null; p.move = null;
   }
 
@@ -51,27 +49,23 @@ export class Lobby {
 
   join(p) {
     this.unpair(p);
-    // 列の先頭から探す。直前の対戦相手とは連続でマッチさせない
-    const i = this.queue.findIndex((w) => w !== p && w !== p.last && w.last !== p && this.players.has(w));
-    if (i >= 0) {
-      const [w] = this.queue.splice(i, 1);
+    const w = this.waiting;
+    if (w && w !== p && this.players.has(w)) {
       clearTimeout(w.timer);
-      p.opp = w; w.opp = p; p.last = w; w.last = p;
+      this.waiting = null;
+      p.opp = w; w.opp = p;
       this.send(p, { type: "matched", country: w.country, ghost: false });
       this.send(w, { type: "matched", country: p.country, ghost: false });
-      this.sendQueue();
       return;
     }
-    this.queue.push(p);
-    this.sendQueue();
+    this.waiting = p;
+    this.send(p, { type: "waiting" });
     p.timer = setTimeout(() => {
-      const k = this.queue.indexOf(p);
-      if (k < 0) return;
-      this.queue.splice(k, 1);
+      if (this.waiting !== p) return;
+      this.waiting = null;
       const past = this.hist.length ? this.hist[Math.floor(Math.random() * this.hist.length)] : null;
       p.ghost = { move: past ? past.move : MOVES[Math.floor(Math.random() * 3)], country: past ? past.country : "XX" };
       this.send(p, { type: "matched", country: p.ghost.country, ghost: true });
-      this.sendQueue();
     }, GHOST_WAIT_MS);
   }
 

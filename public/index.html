@@ -62,7 +62,7 @@ function connect(){
 }
 function on(m){
   if(m.type==="stats")$("stats").textContent=`🌍 いま ${m.online} 人がオンライン ・ 累計 ${m.total} 回`;
-  else if(m.type==="waiting"){$("msg").textContent=`待機列 ${m.pos}番目（待機 ${m.size}人）`;$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true;showChat(false)}
+  else if(m.type==="waiting"){$("msg").textContent="世界のだれかを探しています…";$("opp").innerHTML="";$("big").textContent="🔍";$("go").hidden=true;showChat(false)}
   else if(m.type==="matched"){$("opp").innerHTML=`${m.ghost?"👻 ゴースト（過去の誰かの手）":"対戦相手"}<b>${flag(m.country)}</b>`;$("big").textContent="";$("msg").textContent="手を選んでください";setHands(true);showChat(!m.ghost)}
   else if(m.type==="locked")$("msg").textContent="相手の手を待っています…";
   else if(m.type==="left"){$("msg").textContent="相手が退出しました";setHands(false);showChat(false);$("go").hidden=false;$("go").textContent="次の相手を探す"}
