@@ -10,6 +10,14 @@ binding = "ASSETS"
 name = "LOBBY"
 class_name = "Lobby"
 
+[[durable_objects.bindings]]
+name = "RATING"
+class_name = "Rating"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Lobby"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Rating"]

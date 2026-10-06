@@ -33,6 +33,7 @@ h1{margin:0;font-size:1.6rem}
 <body>
 <h1>✊✋✌️ 世界じゃんけん</h1>
 <div class="stats" id="stats">接続中…</div>
+<div class="stats" id="rate">レート ---</div>
 <select class="lb" id="lb"></select>
 <div class="stage">
   <div class="opp" id="opp"></div>
@@ -54,6 +55,10 @@ const E={r:"✊",s:"✌️",p:"✋"};
 const $=id=>document.getElementById(id);
 const flag=c=>/^[A-Z]{2}$/.test(c)&&c!=="XX"&&c!=="T1"?String.fromCodePoint(...[...c].map(x=>127397+x.charCodeAt())):"🌐";
 const sc={win:0,lose:0,draw:0};
+let PID="";
+try{PID=localStorage.getItem("rps_pid")||"";if(!PID){PID=crypto.randomUUID();localStorage.setItem("rps_pid",PID)}}catch(e){PID=crypto.randomUUID()}
+function setRating(r){$("rate").textContent="レート "+r}
+function flashRating(r){const d=r.delta;setRating(r.rating+(d>0?` (+${d})`:d<0?` (${d})`:" (±0)"));setTimeout(()=>setRating(r.rating),2500)}
 const REG={AS:["アジア",2],EU:["ヨーロッパ",2],NA:["北米",2],SA:["南米",1],OC:["オセアニア",1],AF:["アフリカ",1]};
 const lbName=id=>{const [r,n]=(id||"").split("-");return REG[r]?REG[r][0]+(REG[r][1]>1?` 第${n}`:"")+"ロビー":"ロビー"};
 let LB="";
@@ -61,8 +66,9 @@ $("lb").innerHTML='<option value="">自動（近くのロビー）</option>'+Obj
 $("lb").onchange=()=>{LB=$("lb").value;ws.onclose=null;ws.close();showChat(false);setHands(false);$("big").textContent="";$("opp").textContent="";$("msg").textContent="「対戦相手を探す」を押してください";$("go").hidden=false;$("go").textContent="対戦相手を探す";$("go").disabled=true;connect()};
 let ws,hands=[...document.querySelectorAll(".hands button")];
 const setHands=on=>hands.forEach(b=>b.disabled=!on);
+function wsURL(){const q=new URLSearchParams();if(LB)q.set("lobby",LB);if(PID)q.set("pid",PID);const s=q.toString();return (location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws"+(s?"?"+s:"")}
 function connect(){
-  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws"+(LB?"?lobby="+LB:""));
+  ws=new WebSocket(wsURL());
   ws.onopen=()=>{$("go").disabled=false};
   ws.onclose=()=>{$("stats").textContent="切断されました。再接続中…";$("go").disabled=true;setHands(false);setTimeout(connect,2000)};
   ws.onmessage=e=>on(JSON.parse(e.data));
@@ -74,6 +80,7 @@ function on(m){
   else if(m.type==="locked")$("msg").textContent="相手の手を待っています…";
   else if(m.type==="left"){$("msg").textContent="相手が退出しました";setHands(false);showChat(false);$("go").hidden=false;$("go").textContent="次の相手を探す"}
   else if(m.type==="chat")addLog(m);
+  else if(m.type==="rating")setRating(m.rating);
   else if(m.type==="result")reveal(m);
 }
 function reveal(m){
@@ -83,6 +90,7 @@ function reveal(m){
     const t={win:"勝ち！",lose:"負け…",draw:"あいこ"}[m.outcome];
     $("msg").innerHTML=`<span class="${m.outcome}">${t}</span>`;
     sc[m.outcome]++;$("score").textContent=`${sc.win}勝 ${sc.lose}敗 ${sc.draw}分`;
+    if(m.rating)flashRating(m.rating);
     $("go").hidden=false;$("go").textContent="次の相手を探す";
   },800);
 }
